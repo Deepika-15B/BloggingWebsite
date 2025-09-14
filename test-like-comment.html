@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Like and Comment</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    .success { color: green; }
+    .error { color: red; }
+    .info { color: blue; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Test Like and Comment Functionality</h1>
+  
+  <div class="test-section">
+    <h3>1. Test User Login</h3>
+    <input type="text" id="username" placeholder="Enter username" value="testuser">
+    <button onclick="setCurrentUser()">Set Current User</button>
+    <div id="userStatus"></div>
+  </div>
+
+  <div class="test-section">
+    <h3>2. Test Fetch Posts</h3>
+    <button onclick="fetchPosts()">Fetch All Posts</button>
+    <div id="postsResult"></div>
+  </div>
+
+  <div class="test-section">
+    <h3>3. Test Like Post</h3>
+    <input type="text" id="postId" placeholder="Enter post ID">
+    <button onclick="likePost()">Like/Unlike Post</button>
+    <div id="likeResult"></div>
+  </div>
+
+  <div class="test-section">
+    <h3>4. Test Add Comment</h3>
+    <input type="text" id="commentText" placeholder="Enter comment text" value="Test comment">
+    <button onclick="addComment()">Add Comment</button>
+    <div id="commentResult"></div>
+  </div>
+
+  <div class="test-section">
+    <h3>5. Test Get Single Post</h3>
+    <input type="text" id="singlePostId" placeholder="Enter post ID">
+    <button onclick="getSinglePost()">Get Post</button>
+    <div id="singlePostResult"></div>
+  </div>
+
+  <script>
+    const BASE_URL = 'http://localhost:5000/api';
+    let currentUser = null;
+
+    function setCurrentUser() {
+      const username = document.getElementById('username').value;
+      currentUser = { name: username };
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+      document.getElementById('userStatus').innerHTML = `<span class="success">✅ Current user set to: ${username}</span>`;
+    }
+
+    async function fetchPosts() {
+      try {
+        const response = await fetch(`${BASE_URL}/posts`);
+        const posts = await response.json();
+        
+        let html = '<h4>Posts found:</h4>';
+        posts.forEach((post, index) => {
+          html += `
+            <div style="border: 1px solid #ddd; padding: 10px; margin: 10px 0;">
+              <strong>${post.title}</strong> (ID: ${post._id})<br>
+              Author: ${post.author ? post.author.username : 'Unknown'}<br>
+              Likes: ${post.likes ? post.likes.length : 0}<br>
+              Comments: ${post.comments ? post.comments.length : 0}<br>
+              <button onclick="document.getElementById('postId').value='${post._id}'">Use This Post ID</button>
+              <button onclick="document.getElementById('singlePostId').value='${post._id}'">Get This Post</button>
+            </div>
+          `;
+        });
+        
+        document.getElementById('postsResult').innerHTML = html;
+      } catch (error) {
+        document.getElementById('postsResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+
+    async function likePost() {
+      if (!currentUser) {
+        document.getElementById('likeResult').innerHTML = '<span class="error">❌ Please set current user first</span>';
+        return;
+      }
+
+      const postId = document.getElementById('postId').value;
+      if (!postId) {
+        document.getElementById('likeResult').innerHTML = '<span class="error">❌ Please enter a post ID</span>';
+        return;
+      }
+
+      try {
+        const response = await fetch(`${BASE_URL}/posts/${postId}/like`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            authorUsername: currentUser.name
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          document.getElementById('likeResult').innerHTML = `
+            <span class="success">✅ Post liked/unliked successfully!</span><br>
+            <strong>Updated post:</strong><br>
+            <pre>${JSON.stringify(result, null, 2)}</pre>
+          `;
+        } else {
+          const error = await response.json();
+          document.getElementById('likeResult').innerHTML = `<span class="error">❌ Error: ${JSON.stringify(error)}</span>`;
+        }
+      } catch (error) {
+        document.getElementById('likeResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+
+    async function addComment() {
+      if (!currentUser) {
+        document.getElementById('commentResult').innerHTML = '<span class="error">❌ Please set current user first</span>';
+        return;
+      }
+
+      const postId = document.getElementById('postId').value;
+      const commentText = document.getElementById('commentText').value;
+      
+      if (!postId || !commentText) {
+        document.getElementById('commentResult').innerHTML = '<span class="error">❌ Please enter both post ID and comment text</span>';
+        return;
+      }
+
+      try {
+        const response = await fetch(`${BASE_URL}/posts/${postId}/comment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            content: commentText,
+            authorUsername: currentUser.name
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          document.getElementById('commentResult').innerHTML = `
+            <span class="success">✅ Comment added successfully!</span><br>
+            <strong>Updated post:</strong><br>
+            <pre>${JSON.stringify(result, null, 2)}</pre>
+          `;
+        } else {
+          const error = await response.json();
+          document.getElementById('commentResult').innerHTML = `<span class="error">❌ Error: ${JSON.stringify(error)}</span>`;
+        }
+      } catch (error) {
+        document.getElementById('commentResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+
+    async function getSinglePost() {
+      const postId = document.getElementById('singlePostId').value;
+      if (!postId) {
+        document.getElementById('singlePostResult').innerHTML = '<span class="error">❌ Please enter a post ID</span>';
+        return;
+      }
+
+      try {
+        const response = await fetch(`${BASE_URL}/posts/${postId}`);
+        if (response.ok) {
+          const post = await response.json();
+          document.getElementById('singlePostResult').innerHTML = `
+            <span class="success">✅ Post fetched successfully!</span><br>
+            <strong>Post data:</strong><br>
+            <pre>${JSON.stringify(post, null, 2)}</pre>
+          `;
+        } else {
+          const error = await response.json();
+          document.getElementById('singlePostResult').innerHTML = `<span class="error">❌ Error: ${JSON.stringify(error)}</span>`;
+        }
+      } catch (error) {
+        document.getElementById('singlePostResult').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+      }
+    }
+
+    // Initialize
+    window.onload = function() {
+      const savedUser = localStorage.getItem('currentUser');
+      if (savedUser) {
+        currentUser = JSON.parse(savedUser);
+        document.getElementById('username').value = currentUser.name;
+        document.getElementById('userStatus').innerHTML = `<span class="info">ℹ️ Current user: ${currentUser.name}</span>`;
+      }
+    };
+  </script>
+</body>
+</html>

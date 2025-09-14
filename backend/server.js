@@ -3,9 +3,10 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+require('dotenv').config();  // <-- load .env
 
 const authRoutes = require('./routes/auth');           // signup/login for normal users
-const adminAuthRoutes = require('./routes/admin');     // admin login (e.g., /api/admin/login)
+const adminAuthRoutes = require('./routes/admin');     // admin login
 const adminManageRoutes = require('./routes/adminRoutes'); // admin user/post management
 
 const app = express();
@@ -14,18 +15,20 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// DB connection (no deprecated options)
-mongoose.connect('mongodb://localhost:27017/blogUsers')
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB error:', err));
-
+// ✅ DB connection (Atlas instead of local Compass)
+const mongoURI = process.env.MONGO_URI || "mongodb://localhost:27017/blog-project";
+mongoose.connect(mongoURI)
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch(err => console.error("❌ MongoDB connection error:", err));
 // route mounting
 app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminAuthRoutes);          // admin login route(s)
-app.use('/api/admin/manage', adminManageRoutes); // user/post management for admin
+app.use('/api/admin', adminAuthRoutes);
+app.use('/api/admin/manage', adminManageRoutes);
+const postRoutes = require("./routes/postRoutes");
+app.use("/api/posts", postRoutes);
 
 // start server
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });

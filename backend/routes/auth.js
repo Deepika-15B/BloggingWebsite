@@ -22,11 +22,23 @@ router.post('/signup', async (req, res) => {
             return res.status(400).json({ message: "User already exists" });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // Hash password
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+        // Create new user
         const user = new User({
-            fullName, username, email, password: hashedPassword,
-            dob, gender, bio, profilePic, category, country, termsAccepted
+            fullName,
+            username,
+            email,
+            password: hashedPassword,
+            dob,
+            gender,
+            bio,
+            profilePic,
+            category,
+            country,
+            termsAccepted
         });
 
         await user.save();
@@ -41,21 +53,29 @@ router.post('/login', async (req, res) => {
     try {
         const { emailOrUsername, password } = req.body;
 
+        console.log('Login attempt for:', emailOrUsername);
+
         const user = await User.findOne({
             $or: [{ email: emailOrUsername }, { username: emailOrUsername }]
         });
 
         if (!user) {
+            console.log('User not found:', emailOrUsername);
             return res.status(400).json({ message: "User not found" });
         }
 
+        console.log('User found, comparing passwords...');
         const isMatch = await bcrypt.compare(password, user.password);
+        console.log('Password match result:', isMatch);
+
         if (!isMatch) {
             return res.status(400).json({ message: "Incorrect password" });
         }
 
+        console.log('Login successful for:', emailOrUsername);
         res.status(200).json({ message: "Login successful", user: { username: user.username, email: user.email } });
     } catch (err) {
+        console.error('Login error:', err);
         res.status(500).json({ message: "Server error", error: err.message });
     }
 });

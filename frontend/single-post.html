@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Single Post - Blog</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: url('bg4.avif') no-repeat center center fixed;
+      background-size: cover;
+      min-height: 100vh;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: none;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .like-button {
+      transition: all 0.3s ease;
+    }
+    .like-button.animated {
+      transform: scale(1.2);
+      color: #ef4444;
+    }
+    .like-button.liked {
+      color: #ef4444;
+    }
+
+    .max-w-3xl {
+      position: relative;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body class="bg-gray-100">
+
+  <div class="max-w-3xl mx-auto py-10">
+    <div id="postContainer" class="bg-white p-6 rounded-lg shadow"></div>
+
+    <!-- Comments Section -->
+    <div class="bg-white p-6 rounded-lg shadow mt-6">
+      <h3 class="text-xl font-bold mb-4">Comments</h3>
+      <div id="commentsList" class="space-y-3 mb-4"></div>
+      
+      <textarea id="commentInput" rows="3" class="w-full border p-2 rounded mb-2" placeholder="Write a comment..."></textarea>
+      <button onclick="addComment()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Post Comment</button>
+    </div>
+  </div>
+
+  <script>
+    // Get post ID from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const postId = urlParams.get("id");
+
+    let post = null;
+    let comments = [];
+
+    async function fetchPost() {
+      try {
+        const response = await fetch(`http://localhost:5000/api/posts/${postId}`);
+        if (!response.ok) {
+          throw new Error('Post not found');
+        }
+        
+        post = await response.json();
+        console.log("Fetched post data:", post);
+        console.log("Post likes:", post.likes);
+        console.log("Post comments:", post.comments);
+        displayPost();
+        renderComments();
+      } catch (error) {
+        console.error('Error fetching post:', error);
+        document.getElementById("postContainer").innerHTML = 
+          '<p class="text-red-500">Post not found!</p>';
+      }
+    }
+
+    function displayPost() {
+      const postContainer = document.getElementById("postContainer");
+      
+      if (post) {
+        const postDate = new Date(post.createdAt).toLocaleDateString();
+        const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+        const isLiked = currentUser && post.likes && post.likes.some(like => 
+          (typeof like === 'string' && like === currentUser.name) || 
+          (like && like.username === currentUser.name)
+        );
+        
+        postContainer.innerHTML = `
+          <h1 class="text-3xl font-bold mb-2">${post.title}</h1>
+          <p class="text-gray-600 mb-4">by <span class="font-medium text-blue-600">${post.author ? post.author.username : "Unknown"}</span> • ${postDate}</p>
+          ${post.image ? `<img src="${post.image}" class="w-full h-64 object-cover rounded mb-4" alt="Post Image">` : ""}
+          <div class="text-gray-700 mb-4">${post.content}</div>
+          
+          <!-- Like and Comment Stats -->
+          <div class="flex items-center space-x-4 mb-4">
+            <button id="likeButton" onclick="likePost()" class="like-button text-2xl ${isLiked ? 'liked' : ''} hover:scale-110 transition-transform">
+              ${isLiked ? '❤️' : '🤍'} 
+              <span id="likeCount">${post.likes ? post.likes.length : 0}</span>
+            </button>
+            <span class="text-gray-600">💬 ${post.comments ? post.comments.length : 0} comments</span>
+          </div>
+        `;
+      } else {
+        postContainer.innerHTML = '<p class="text-red-500">Post not found!</p>';
+      }
+    }
+
+    // Like/Unlike functionality
+    async function likePost() {
+      try {
+        const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+        if (!currentUser || !currentUser.name) {
+          alert("Please login to like posts");
+          return;
+        }
+        
+        console.log("Current user:", currentUser);
+        console.log("Post likes before:", post.likes);
+
+        const response = await fetch(`http://localhost:5000/api/posts/${postId}/like`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ authorUsername: currentUser.name })
+        });
+
+        if (response.ok) {
+          const updatedPost = await response.json();
+          post = updatedPost;
+          
+          // Update like button
+          const likeButton = document.getElementById("likeButton");
+          const likeCount = document.getElementById("likeCount");
+          const isLiked = post.likes && post.likes.some(like => 
+            (typeof like === 'string' && like === currentUser.name) || 
+            (like && like.username === currentUser.name)
+          );
+          
+          likeButton.innerHTML = `${isLiked ? '❤️' : '🤍'} <span id="likeCount">${post.likes ? post.likes.length : 0}</span>`;
+          likeButton.className = `like-button text-2xl ${isLiked ? 'liked' : ''} hover:scale-110 transition-transform`;
+          
+          // Add animation
+          likeButton.classList.add("animated");
+          setTimeout(() => likeButton.classList.remove("animated"), 300);
+          
+        } else {
+          const error = await response.json();
+          alert("Error liking post: " + (error.error || "Unknown error"));
+        }
+      } catch (error) {
+        console.error("Error liking post:", error);
+        alert("Error liking post. Please try again.");
+      }
+    }
+
+    // Comment System
+    async function renderComments() {
+      const commentsList = document.getElementById("commentsList");
+      commentsList.innerHTML = "";
+      
+      if (!post || !post.comments || post.comments.length === 0) {
+        commentsList.innerHTML = '<p class="text-gray-500">No comments yet. Be the first to comment!</p>';
+        return;
+      }
+      
+      post.comments.forEach(comment => {
+        const div = document.createElement("div");
+        div.className = "p-3 bg-gray-100 rounded";
+        div.innerHTML = `
+          <div class="font-medium text-blue-600">${comment.author ? comment.author.username : 'Unknown'}</div>
+          <div class="text-gray-700">${comment.content}</div>
+          <div class="text-xs text-gray-500 mt-1">${new Date(comment.createdAt).toLocaleDateString()}</div>
+        `;
+        commentsList.appendChild(div);
+      });
+    }
+
+    async function addComment() {
+      const input = document.getElementById("commentInput");
+      const commentText = input.value.trim();
+      
+      if (commentText === "") {
+        alert("Please enter a comment");
+        return;
+      }
+
+      const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+      if (!currentUser || !currentUser.name) {
+        alert("Please login to comment");
+        return;
+      }
+      
+      console.log("Adding comment as user:", currentUser);
+      console.log("Comment text:", commentText);
+
+      try {
+        const response = await fetch(`http://localhost:5000/api/posts/${postId}/comment`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            content: commentText,
+            authorUsername: currentUser.name
+          })
+        });
+
+        if (response.ok) {
+          const updatedPost = await response.json();
+          post = updatedPost;
+          input.value = "";
+          renderComments();
+          
+          // Update comment count in post display
+          const likeButton = document.getElementById("likeButton");
+          if (likeButton) {
+            const commentCount = likeButton.nextElementSibling;
+            if (commentCount) {
+              commentCount.textContent = `💬 ${post.comments ? post.comments.length : 0} comments`;
+            }
+          }
+        } else {
+          const error = await response.json();
+          alert("Error adding comment: " + (error.error || "Unknown error"));
+        }
+      } catch (error) {
+        console.error("Error adding comment:", error);
+        alert("Error adding comment. Please try again.");
+      }
+    }
+
+    // Load post when page loads
+    window.onload = function() {
+      if (postId) {
+        fetchPost();
+      } else {
+        document.getElementById("postContainer").innerHTML = 
+          '<p class="text-red-500">No post ID provided!</p>';
+      }
+    }
+  </script>
+</body>
+</html>
