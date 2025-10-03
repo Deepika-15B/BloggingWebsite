@@ -4,17 +4,40 @@ const Post = require("../models/Post");
 const User = require("../models/User");
 const Comment = require("../models/Comment");
 
-// Get all posts
+// Get all posts with optional search, tag filter, and sort
 router.get("/", async (req, res) => {
   try {
-    const posts = await Post.find()
+    const { q, tag, category, sort } = req.query;
+
+    const query = { isPublished: true };
+    if (q) {
+      query.$or = [
+        { title: { $regex: q, $options: 'i' } },
+        { content: { $regex: q, $options: 'i' } },
+        { tags: { $regex: q, $options: 'i' } }
+      ];
+    }
+    if (tag) {
+      query.tags = { $regex: `^${tag}$`, $options: 'i' };
+    }
+    if (category) {
+      query.category = category;
+    }
+
+    const sortOption = (() => {
+      if (sort === 'trending') return { viewCount: -1, likes: -1, createdAt: -1 };
+      if (sort === 'popular') return { shareCount: -1, likes: -1 };
+      return { createdAt: -1 };
+    })();
+
+    const posts = await Post.find(query)
       .populate("author", "username fullName email")
       .populate("likes", "username") // Populate likes with username
       .populate({
         path: "comments",
         populate: { path: "author", select: "username" }
       })
-      .sort({ createdAt: -1 });
+      .sort(sortOption);
     res.json(posts);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -23,10 +46,12 @@ router.get("/", async (req, res) => {
 
 
 
-// Get single post by ID
+// Get single post by ID or slug
 router.get("/:id", async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id)
+    const idOrSlug = req.params.id;
+    const criteria = idOrSlug.match(/^[0-9a-fA-F]{24}$/) ? { _id: idOrSlug } : { slug: idOrSlug };
+    const post = await Post.findOne(criteria)
       .populate("author", "username fullName email")
       .populate("likes", "username") // Populate likes with username
       .populate({
@@ -46,7 +71,7 @@ router.get("/:id", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     console.log("Received post creation request:", req.body);
-    const { title, content, category, authorUsername, image } = req.body;
+    const { title, content, category, authorUsername, image, tags } = req.body;
 
     if (!title || !content || !category || !authorUsername) {
       console.log("Missing required fields:", { title: !!title, content: !!content, category: !!category, authorUsername: !!authorUsername });
@@ -82,7 +107,8 @@ router.post("/", async (req, res) => {
       content,
       category,
       image: image || null,  // Store image if provided
-      author: author._id
+      author: author._id,
+      tags: Array.isArray(tags) ? tags : []
     });
 
     console.log("Creating post with data:", {
@@ -119,10 +145,10 @@ router.post("/", async (req, res) => {
 // Update post
 router.put("/:id", async (req, res) => {
   try {
-    const { title, content } = req.body;
+    const { title, content, tags, category, image, isPublished } = req.body;
     const updatedPost = await Post.findByIdAndUpdate(
       req.params.id,
-      { title, content, updatedAt: Date.now() },
+      { title, content, tags, category, image, isPublished, updatedAt: Date.now() },
       { new: true }
     ).populate("author", "username fullName email")
      .populate("likes", "username");
@@ -248,6 +274,85 @@ router.get("/:id/comments", async (req, res) => {
       .populate("author", "username")
       .sort({ createdAt: -1 });
     res.json(comments);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Get post recommendations based on category and tags
+router.get("/:id/recommendations", async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    // Find similar posts based on category and tags
+    const recommendations = await Post.find({
+      _id: { $ne: post._id }, // Exclude current post
+      category: post.category,
+      isPublished: true
+    })
+    .populate("author", "username fullName")
+    .sort({ createdAt: -1 })
+    .limit(5);
+
+    res.json(recommendations);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Increment post view count
+router.post("/:id/view", async (req, res) => {
+  try {
+    const idOrSlug = req.params.id;
+    const criteria = idOrSlug.match(/^[0-9a-fA-F]{24}$/) ? { _id: idOrSlug } : { slug: idOrSlug };
+    const post = await Post.findOneAndUpdate(
+      criteria,
+      { $inc: { viewCount: 1 } },
+      { new: true }
+    );
+    
+    if (!post) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    res.json({ viewCount: post.viewCount });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Increment post share count
+router.post("/:id/share", async (req, res) => {
+  try {
+    const idOrSlug = req.params.id;
+    const criteria = idOrSlug.match(/^[0-9a-fA-F]{24}$/) ? { _id: idOrSlug } : { slug: idOrSlug };
+    const post = await Post.findOneAndUpdate(
+      criteria,
+      { $inc: { shareCount: 1 } },
+      { new: true }
+    );
+    
+    if (!post) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    res.json({ shareCount: post.shareCount });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Get trending posts
+router.get("/discover/trending/list", async (req, res) => {
+  try {
+    const posts = await Post.find({ isPublished: true })
+      .sort({ viewCount: -1, shareCount: -1, createdAt: -1 })
+      .limit(10)
+      .populate("author", "username fullName");
+    res.json(posts);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }

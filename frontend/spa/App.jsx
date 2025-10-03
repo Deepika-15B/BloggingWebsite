@@ -39,6 +39,8 @@ function Navbar() {
 function Profile() {
   const [currentUser, setCurrentUser] = useLocalStorageState("currentUser", null);
   const [stats, setStats] = useState({ posts: 0, likes: 0, comments: 0 });
+  const [userProfile, setUserProfile] = useState(null);
+  const [isFollowing, setIsFollowing] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -67,13 +69,39 @@ function Profile() {
         console.error("Error loading user stats:", e);
       }
     }
+    
+    async function loadUserProfile() {
+      try {
+        const res = await fetch(`http://localhost:5000/api/users/profile/${currentUser.name}`);
+        if (res.ok) {
+          const data = await res.json();
+          setUserProfile(data.user);
+        }
+      } catch (e) {
+        console.error("Error loading user profile:", e);
+      }
+    }
+    
     if (currentUser && currentUser.name) {
       loadStats();
+      loadUserProfile();
     }
   }, [currentUser]);
 
   const [isEditing, setIsEditing] = useState(false);
-  const [edit, setEdit] = useState({ fullName: "", username: "", email: "", profilePicture: null });
+  const [edit, setEdit] = useState({ 
+    fullName: "", 
+    username: "", 
+    email: "", 
+    profilePicture: null,
+    bio: "",
+    socialLinks: {
+      twitter: "",
+      linkedin: "",
+      github: "",
+      website: ""
+    }
+  });
 
   const openEdit = useCallback(() => {
     if (!currentUser) return;
@@ -82,9 +110,16 @@ function Profile() {
       username: currentUser.name || "",
       email: currentUser.email || "",
       profilePicture: currentUser.profilePicture || null,
+      bio: userProfile?.bio || "",
+      socialLinks: {
+        twitter: userProfile?.socialLinks?.twitter || "",
+        linkedin: userProfile?.socialLinks?.linkedin || "",
+        github: userProfile?.socialLinks?.github || "",
+        website: userProfile?.socialLinks?.website || ""
+      }
     });
     setIsEditing(true);
-  }, [currentUser]);
+  }, [currentUser, userProfile]);
 
   const closeEdit = useCallback(() => setIsEditing(false), []);
 
@@ -98,20 +133,42 @@ function Profile() {
     reader.readAsDataURL(file);
   }, []);
 
-  const saveChanges = useCallback((e) => {
+  const saveChanges = useCallback(async (e) => {
     e.preventDefault();
-    const updated = {
-      ...currentUser,
-      fullName: edit.fullName,
-      name: edit.username,
-      email: edit.email,
-      profilePicture: edit.profilePicture || currentUser?.profilePicture || null,
-    };
     try {
+      // Update local storage
+      const updated = {
+        ...currentUser,
+        fullName: edit.fullName,
+        name: edit.username,
+        email: edit.email,
+        profilePicture: edit.profilePicture || currentUser?.profilePicture || null,
+      };
       window.localStorage.setItem("currentUser", JSON.stringify(updated));
       setCurrentUser(updated);
-      setIsEditing(false);
-      alert("Profile updated successfully!");
+      
+      // Update server
+      const response = await fetch(`http://localhost:5000/api/users/profile/${edit.username}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bio: edit.bio,
+          socialLinks: edit.socialLinks
+        })
+      });
+      
+      if (response.ok) {
+        setIsEditing(false);
+        alert("Profile updated successfully!");
+        // Reload profile data
+        const profileRes = await fetch(`http://localhost:5000/api/users/profile/${edit.username}`);
+        if (profileRes.ok) {
+          const data = await profileRes.json();
+          setUserProfile(data.user);
+        }
+      } else {
+        throw new Error('Failed to update profile on server');
+      }
     } catch (err) {
       console.error("Error updating profile:", err);
       alert("Error updating profile. Please try again.");
@@ -136,6 +193,39 @@ function Profile() {
           <h1 className="profile-name" style={styles.profileName}>{(currentUser && (currentUser.fullName || currentUser.name)) || "Loading..."}</h1>
           <p className="profile-username" style={styles.profileUsername}>@{currentUser ? currentUser.name : ''}</p>
           <p className="profile-email" style={styles.profileEmail}>{currentUser && currentUser.email ? currentUser.email : 'No email available'}</p>
+          
+          {/* Bio */}
+          {userProfile?.bio && (
+            <p className="profile-bio" style={{...styles.profileEmail, marginTop: 15, fontStyle: 'italic'}}>
+              "{userProfile.bio}"
+            </p>
+          )}
+          
+          {/* Social Links */}
+          {userProfile?.socialLinks && (
+            <div className="social-links" style={{marginTop: 20, display: 'flex', gap: 15, justifyContent: 'center', flexWrap: 'wrap'}}>
+              {userProfile.socialLinks.twitter && (
+                <a href={userProfile.socialLinks.twitter} target="_blank" rel="noopener noreferrer" style={{color: '#1da1f2', textDecoration: 'none', fontSize: '1.2rem'}}>
+                  🐦 Twitter
+                </a>
+              )}
+              {userProfile.socialLinks.linkedin && (
+                <a href={userProfile.socialLinks.linkedin} target="_blank" rel="noopener noreferrer" style={{color: '#0077b5', textDecoration: 'none', fontSize: '1.2rem'}}>
+                  💼 LinkedIn
+                </a>
+              )}
+              {userProfile.socialLinks.github && (
+                <a href={userProfile.socialLinks.github} target="_blank" rel="noopener noreferrer" style={{color: '#333', textDecoration: 'none', fontSize: '1.2rem'}}>
+                  🐙 GitHub
+                </a>
+              )}
+              {userProfile.socialLinks.website && (
+                <a href={userProfile.socialLinks.website} target="_blank" rel="noopener noreferrer" style={{color: '#ff7eb3', textDecoration: 'none', fontSize: '1.2rem'}}>
+                  🌐 Website
+                </a>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="profile-stats" style={styles.profileStats}>
@@ -144,12 +234,16 @@ function Profile() {
             <span className="stat-label" style={styles.statLabel}>Total Posts</span>
           </div>
           <div className="stat-card" style={styles.statCard}>
-            <span className="stat-number" style={styles.statNumber}>{stats.likes}</span>
-            <span className="stat-label" style={styles.statLabel}>Total Likes</span>
+            <span className="stat-number" style={styles.statNumber}>{userProfile?.followerCount || 0}</span>
+            <span className="stat-label" style={styles.statLabel}>Followers</span>
           </div>
           <div className="stat-card" style={styles.statCard}>
-            <span className="stat-number" style={styles.statNumber}>{stats.comments}</span>
-            <span className="stat-label" style={styles.statLabel}>Total Comments</span>
+            <span className="stat-number" style={styles.statNumber}>{userProfile?.followingCount || 0}</span>
+            <span className="stat-label" style={styles.statLabel}>Following</span>
+          </div>
+          <div className="stat-card" style={styles.statCard}>
+            <span className="stat-number" style={styles.statNumber}>{stats.likes}</span>
+            <span className="stat-label" style={styles.statLabel}>Total Likes</span>
           </div>
         </div>
 
@@ -186,6 +280,31 @@ function Profile() {
                 <div className="form-group" style={styles.formGroup}>
                   <label htmlFor="editEmail" style={styles.formLabel}>Email</label>
                   <input type="email" id="editEmail" required value={edit.email} onChange={(e) => setEdit((p) => ({...p, email: e.target.value}))} style={styles.input} />
+                </div>
+                <div className="form-group" style={styles.formGroup}>
+                  <label htmlFor="editBio" style={styles.formLabel}>Bio</label>
+                  <textarea id="editBio" value={edit.bio} onChange={(e) => setEdit((p) => ({...p, bio: e.target.value}))} style={{...styles.input, minHeight: 80}} placeholder="Tell us about yourself..." maxLength={500} />
+                </div>
+                <div className="form-group" style={styles.formGroup}>
+                  <label style={styles.formLabel}>Social Links</label>
+                  <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15}}>
+                    <div>
+                      <label style={{fontSize: '0.8rem', color: '#666', marginBottom: 5}}>Twitter</label>
+                      <input type="url" value={edit.socialLinks.twitter} onChange={(e) => setEdit((p) => ({...p, socialLinks: {...p.socialLinks, twitter: e.target.value}}))} style={styles.input} placeholder="https://twitter.com/username" />
+                    </div>
+                    <div>
+                      <label style={{fontSize: '0.8rem', color: '#666', marginBottom: 5}}>LinkedIn</label>
+                      <input type="url" value={edit.socialLinks.linkedin} onChange={(e) => setEdit((p) => ({...p, socialLinks: {...p.socialLinks, linkedin: e.target.value}}))} style={styles.input} placeholder="https://linkedin.com/in/username" />
+                    </div>
+                    <div>
+                      <label style={{fontSize: '0.8rem', color: '#666', marginBottom: 5}}>GitHub</label>
+                      <input type="url" value={edit.socialLinks.github} onChange={(e) => setEdit((p) => ({...p, socialLinks: {...p.socialLinks, github: e.target.value}}))} style={styles.input} placeholder="https://github.com/username" />
+                    </div>
+                    <div>
+                      <label style={{fontSize: '0.8rem', color: '#666', marginBottom: 5}}>Website</label>
+                      <input type="url" value={edit.socialLinks.website} onChange={(e) => setEdit((p) => ({...p, socialLinks: {...p.socialLinks, website: e.target.value}}))} style={styles.input} placeholder="https://yourwebsite.com" />
+                    </div>
+                  </div>
                 </div>
                 <div className="form-group" style={styles.formGroup}>
                   <label htmlFor="profilePicture" style={styles.formLabel}>Profile Picture</label>
@@ -414,6 +533,7 @@ function Dashboard() {
   const [posts, setPosts] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const currentUser = useMemo(() => JSON.parse(localStorage.getItem('currentUser')), []);
 
   useEffect(() => {
     const user = JSON.parse(window.localStorage.getItem('currentUser'));
@@ -423,7 +543,6 @@ function Dashboard() {
     const filterMyPosts = window.localStorage.getItem('filterMyPosts');
     if (selectedCategory) { setSearch(selectedCategory); window.localStorage.removeItem('selectedCategory'); }
     if (filterMyPosts === 'true') { setSearch('my-posts'); window.localStorage.removeItem('filterMyPosts'); }
-
     fetchPosts();
   }, []);
 
@@ -441,6 +560,33 @@ function Dashboard() {
     }
   }
 
+  async function fetchFollowingFeed() {
+    try {
+      if (!currentUser || !currentUser.name) return;
+      setLoading(true);
+      const res = await fetch(`http://localhost:5000/api/users/feed/${currentUser.name}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error('Failed to fetch following feed');
+      setPosts(data);
+    } catch (e) {
+      console.error('Error fetching following feed:', e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // React to search changes that require server-side filtering
+  useEffect(() => {
+    if (search === 'following') {
+      fetchFollowingFeed();
+    } else if (!search || search === 'my-posts') {
+      // reload full list; client-side will filter for my-posts
+      fetchPosts();
+    }
+    // other values (categories or text) are handled client-side from full list
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
   async function likePost(postId) {
     try {
       const currentUser = JSON.parse(localStorage.getItem('currentUser'));
@@ -448,6 +594,40 @@ function Dashboard() {
       const response = await fetch(`http://localhost:5000/api/posts/${postId}/like`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authorUsername: currentUser.name }) });
       if (response.ok) fetchPosts(); else alert('Error liking post');
     } catch (e) { console.error('Error liking post:', e); alert('Error liking post'); }
+  }
+
+  async function followUser(authorId, authorUsername) {
+    try {
+      console.log('Follow user called with:', { authorId, authorUsername });
+      const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+      console.log('Current user:', currentUser);
+      
+      if (!currentUser) { alert('Please login to follow users'); return; }
+      if (currentUser.name === authorUsername) { alert('You cannot follow yourself'); return; }
+      
+      console.log('Making follow request...');
+      const response = await fetch(`http://localhost:5000/api/users/follow/${authorId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ followerUsername: currentUser.name })
+      });
+      
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Follow result:', result);
+        alert(result.message);
+      } else {
+        const errorText = await response.text();
+        console.log('Error response:', errorText);
+        alert('Error following user');
+      }
+    } catch (e) {
+      console.error('Error following user:', e);
+      alert('Error following user');
+    }
   }
 
   async function deletePost(postId) {
@@ -458,12 +638,15 @@ function Dashboard() {
     } catch (e) { console.error('Error deleting post:', e); alert('Error deleting post'); }
   }
 
-  const currentUser = useMemo(() => JSON.parse(localStorage.getItem('currentUser')), []);
   const filtered = useMemo(() => {
     return posts.filter(post => {
       const matchesTitle = post.title.toLowerCase().includes(search.toLowerCase());
       if (search === 'my-posts') {
         return post.author && (post.author.username === currentUser?.name || post.author.fullName === currentUser?.name);
+      }
+      if (search === 'following') {
+        // Server returns only followed users' posts in posts state
+        return true;
       }
       const categories = ['technology','lifestyle','travel','food','health','business','entertainment','education'];
       if (categories.includes(search.toLowerCase())) {
@@ -476,8 +659,9 @@ function Dashboard() {
   return (
     <div style={styles.pageBg}>
       <Navbar />
-      <div className="search-container" style={{textAlign:'center', margin:'30px 0', display:'flex', justifyContent:'center', gap:15, alignItems:'center'}}>
-        <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder={search==='my-posts'?'🔍 Showing your posts...':(search?`🔍 Search posts in ${search}...`:'🔍 Search posts by title...')} style={{width:'60%', padding:'14px 22px', borderRadius:50, border:'none', outline:'none', fontSize:16, boxShadow:'0 4px 15px rgba(0,0,0,0.2)'}} />
+      <div className="search-container" style={{textAlign:'center', margin:'30px 0', display:'flex', justifyContent:'center', gap:15, alignItems:'center', flexWrap:'wrap'}}>
+        <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder={search==='my-posts'?'🔍 Showing your posts...':search==='following'?'👥 Showing posts from people you follow...':(search?`🔍 Search posts in ${search}...`:'🔍 Search posts by title...')} style={{width:'60%', padding:'14px 22px', borderRadius:50, border:'none', outline:'none', fontSize:16, boxShadow:'0 4px 15px rgba(0,0,0,0.2)'}} />
+        <button onClick={()=>setSearch('following')} className="following-btn" style={{padding:'14px 22px', border:'none', borderRadius:50, fontSize:16, background:'rgba(79,172,254,0.8)', color:'#fff', cursor:'pointer', boxShadow:'0 4px 15px rgba(0,0,0,0.2)'}}>👥 Following</button>
         {search && (
           <button onClick={()=>setSearch('')} className="clear-filter-btn" style={{padding:'14px 22px', border:'none', borderRadius:50, fontSize:16, background:'rgba(255,126,179,0.8)', color:'#fff', cursor:'pointer', boxShadow:'0 4px 15px rgba(0,0,0,0.2)'}}>Clear Filter</button>
         )}
@@ -504,6 +688,9 @@ function Dashboard() {
                     <div>
                       <button className="btn btn-view" style={{padding:'8px 16px', border:'none', borderRadius:50, cursor:'pointer', fontSize:14, fontWeight:600, marginRight:5, background:'linear-gradient(45deg,#ff6a00,#ee0979)', color:'#fff'}} onClick={()=>{ window.location.hash = `#/single-post?id=${post._id}`; }}>Read More</button>
                       <button className="btn btn-like" style={{padding:'8px 16px', border:'none', borderRadius:50, cursor:'pointer', fontSize:18, color:'#e63946', background:'transparent'}} onClick={()=>likePost(post._id)}>❤️ {post.likes ? post.likes.length : 0}</button>
+                      {!isOwner && post.author && (
+                        <button className="btn btn-follow" style={{padding:'8px 16px', border:'none', borderRadius:50, cursor:'pointer', fontSize:14, fontWeight:600, background:'linear-gradient(45deg,#4facfe,#00f2fe)', color:'#fff', marginLeft:5}} onClick={()=>followUser(post.author._id, post.author.username)}>👥 Follow</button>
+                      )}
                       {isOwner && (
                         <button className="btn btn-delete" style={{padding:'8px 16px', border:'none', borderRadius:50, cursor:'pointer', fontSize:14, fontWeight:600, background:'linear-gradient(45deg,#ff416c,#ff4b2b)', color:'#fff'}} onClick={()=>deletePost(post._id)}>🗑 Delete</button>
                       )}
@@ -522,6 +709,7 @@ function Dashboard() {
 function CreatePost() {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
+  const [tags, setTags] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [imageInfo, setImageInfo] = useState({ show: false, ok: false, text: '' });
   const [content, setContent] = useState('');
@@ -537,6 +725,31 @@ function CreatePost() {
 
   function format(cmd, value = null) {
     document.execCommand(cmd, false, value);
+    editorRef.current && editorRef.current.focus();
+    setContent(editorRef.current?.innerHTML || '');
+  }
+
+  function insertCodeBlock() {
+    const codeBlock = '<pre><code>// Enter your code here\n</code></pre>';
+    document.execCommand('insertHTML', false, codeBlock);
+    editorRef.current && editorRef.current.focus();
+    setContent(editorRef.current?.innerHTML || '');
+  }
+
+  function insertTable() {
+    const table = `
+      <table style="border-collapse: collapse; width: 100%; margin: 10px 0;">
+        <tr>
+          <th style="border: 1px solid #ddd; padding: 8px; background-color: #f2f2f2;">Header 1</th>
+          <th style="border: 1px solid #ddd; padding: 8px; background-color: #f2f2f2;">Header 2</th>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #ddd; padding: 8px;">Cell 1</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">Cell 2</td>
+        </tr>
+      </table>
+    `;
+    document.execCommand('insertHTML', false, table);
     editorRef.current && editorRef.current.focus();
     setContent(editorRef.current?.innerHTML || '');
   }
@@ -557,11 +770,11 @@ function CreatePost() {
 
   useEffect(() => {
     const t = setTimeout(() => {
-      const payload = { title, content, category };
-      if (title || content || category) localStorage.setItem('postDraft', JSON.stringify(payload));
+      const payload = { title, content, category, tags };
+      if (title || content || category || tags) localStorage.setItem('postDraft', JSON.stringify(payload));
     }, 2000);
     return () => clearTimeout(t);
-  }, [title, content, category]);
+  }, [title, content, category, tags]);
 
   function compressImage(file) {
     return new Promise((resolve) => {
@@ -593,7 +806,18 @@ function CreatePost() {
         const allowed = ['image/jpeg','image/jpg','image/png','image/gif','image/webp']; if (!allowed.includes(imageFile.type)) { alert('Please select a valid image file.'); setPublishing(false); return; }
         imageData = await compressImage(imageFile);
       }
-      const postData = { title, content, category, image: imageData, authorUsername: currentUser.name };
+      
+      // Process tags
+      const tagsArray = tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+      
+      const postData = { 
+        title, 
+        content, 
+        category, 
+        tags: tagsArray,
+        image: imageData, 
+        authorUsername: currentUser.name 
+      };
       const response = await fetch('http://localhost:5000/api/posts', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(postData) });
       const result = await response.json();
       if (response.ok) {
@@ -635,6 +859,11 @@ function CreatePost() {
               </select>
             </div>
             <div className="form-group" style={{marginBottom:25}}>
+              <label style={createStyles.label}>🏷️ Tags</label>
+              <input value={tags} onChange={(e)=>setTags(e.target.value)} placeholder="Enter tags separated by commas (e.g., react, javascript, tutorial)" className="form-control" style={createStyles.input} />
+              <small style={{color:'#666', fontSize:'.8rem', marginTop:5, display:'block'}}>Tags help others discover your post</small>
+            </div>
+            <div className="form-group" style={{marginBottom:25}}>
               <label style={createStyles.label}>🖼️ Featured Image</label>
               <div className="file-upload" style={{position:'relative', display:'inline-block', width:'100%'}}>
                 <input id="featuredImage" type="file" accept="image/*" onChange={checkFileSize} style={{position:'absolute', left:-9999}} />
@@ -646,16 +875,25 @@ function CreatePost() {
             </div>
             <div className="form-group" style={{marginBottom:25}}>
               <label style={createStyles.label}>✍️ Content Editor</label>
-              <div className="toolbar" style={{display:'flex', gap:10, marginBottom:20, flexWrap:'wrap'}}>
-                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('bold')}><b>B</b></button>
-                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('italic')}><i>I</i></button>
-                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('underline')}><u>U</u></button>
-                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('insertOrderedList')}>1.</button>
-                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('insertUnorderedList')}>•</button>
-                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('formatBlock','blockquote')}>❝</button>
-                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('justifyLeft')}>⫷</button>
-                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('justifyCenter')}>⫸</button>
-                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('justifyRight')}>⫹</button>
+              <div className="toolbar" style={{display:'flex', gap:8, marginBottom:20, flexWrap:'wrap', padding:10, background:'#f8f9fa', borderRadius:8, border:'1px solid #e9ecef'}}>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('bold')} title="Bold"><b>B</b></button>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('italic')} title="Italic"><i>I</i></button>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('underline')} title="Underline"><u>U</u></button>
+                <div style={{width:1, height:30, background:'#dee2e6', margin:'0 5px'}}></div>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('formatBlock','h1')} title="Heading 1">H1</button>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('formatBlock','h2')} title="Heading 2">H2</button>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('formatBlock','h3')} title="Heading 3">H3</button>
+                <div style={{width:1, height:30, background:'#dee2e6', margin:'0 5px'}}></div>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('insertOrderedList')} title="Numbered List">1.</button>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('insertUnorderedList')} title="Bullet List">•</button>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('formatBlock','blockquote')} title="Quote">❝</button>
+                <div style={{width:1, height:30, background:'#dee2e6', margin:'0 5px'}}></div>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={insertCodeBlock} title="Code Block">{'</>'}</button>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={insertTable} title="Insert Table">⊞</button>
+                <div style={{width:1, height:30, background:'#dee2e6', margin:'0 5px'}}></div>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('justifyLeft')} title="Align Left">⫷</button>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('justifyCenter')} title="Align Center">⫸</button>
+                <button type="button" className="toolbar-btn" style={createStyles.toolbarBtn} onClick={()=>format('justifyRight')} title="Align Right">⫹</button>
               </div>
               <div className="editor-container" style={{position:'relative', marginBottom:30}}>
                 <div ref={editorRef} id="editor" contentEditable className="form-control" style={{width:'100%', minHeight:250, border:'2px solid #e1e5e9', borderRadius:15, padding:20, fontSize:16, lineHeight:1.6, background:'rgba(255,255,255,0.9)'}} onInput={(e)=>setContent(e.currentTarget.innerHTML)}></div>
@@ -680,6 +918,7 @@ const createStyles = {
 function SinglePost() {
   const [post, setPost] = useState(null);
   const [commentText, setCommentText] = useState('');
+  const [recommendations, setRecommendations] = useState([]);
   const params = useMemo(() => new URLSearchParams((window.location.hash.split('?')[1]) || ''), []);
   const postId = params.get('id');
 
@@ -691,8 +930,51 @@ function SinglePost() {
       if (!response.ok) throw new Error('Post not found');
       const data = await response.json();
       setPost(data);
+      
+      // Increment view count
+      fetch(`http://localhost:5000/api/posts/${postId}/view`, { method: 'POST' });
+      
+      // Fetch recommendations
+      fetchRecommendations();
     } catch (e) {
       console.error('Error fetching post:', e);
+    }
+  }
+
+  async function fetchRecommendations() {
+    try {
+      const response = await fetch(`http://localhost:5000/api/posts/${postId}/recommendations`);
+      if (response.ok) {
+        const data = await response.json();
+        setRecommendations(data);
+      }
+    } catch (e) {
+      console.error('Error fetching recommendations:', e);
+    }
+  }
+
+  function sharePost(platform) {
+    const url = window.location.href;
+    const title = post?.title || '';
+    const text = post?.content?.replace(/<[^>]*>/g, '').substring(0, 200) || '';
+    
+    let shareUrl = '';
+    switch (platform) {
+      case 'twitter':
+        shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`;
+        break;
+      case 'facebook':
+        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
+        break;
+      case 'linkedin':
+        shareUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`;
+        break;
+    }
+    
+    if (shareUrl) {
+      window.open(shareUrl, '_blank', 'width=600,height=400');
+      // Increment share count
+      fetch(`http://localhost:5000/api/posts/${postId}/share`, { method: 'POST' });
     }
   }
 
@@ -735,12 +1017,43 @@ function SinglePost() {
               <p style={{color:'#4b5563', marginBottom:16}}>by <span style={{fontWeight:500, color:'#2563eb'}}>{post.author ? post.author.username : 'Unknown'}</span> • {new Date(post.createdAt).toLocaleDateString()}</p>
               {post.image && <img src={post.image} alt="Post" style={{width:'100%', height:256, objectFit:'cover', borderRadius:8, marginBottom:16}} />}
               <div style={{color:'#374151', marginBottom:16}} dangerouslySetInnerHTML={{__html: post.content}} />
-              <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:16}}>
+              <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:16, flexWrap:'wrap'}}>
                 <button onClick={likePost} className={`like-button ${isLiked?'liked':''}`} style={{fontSize:24, transition:'all .3s ease', color: isLiked?'#ef4444':'inherit'}}>
                   {isLiked ? '❤️' : '🤍'} <span>{post.likes ? post.likes.length : 0}</span>
                 </button>
                 <span style={{color:'#4b5563'}}>💬 {post.comments ? post.comments.length : 0} comments</span>
+                <span style={{color:'#4b5563'}}>👁️ {post.viewCount || 0} views</span>
+                <span style={{color:'#4b5563'}}>📤 {post.shareCount || 0} shares</span>
               </div>
+              
+              {/* Social Sharing Buttons */}
+              <div style={{marginBottom:20, padding:15, background:'#f8f9fa', borderRadius:8, border:'1px solid #e9ecef'}}>
+                <h4 style={{margin:'0 0 10px 0', fontSize:'1rem', color:'#495057'}}>Share this post:</h4>
+                <div style={{display:'flex', gap:10, flexWrap:'wrap'}}>
+                  <button onClick={()=>sharePost('twitter')} style={{padding:'8px 16px', background:'#1da1f2', color:'white', border:'none', borderRadius:6, cursor:'pointer', fontSize:14, fontWeight:500}}>
+                    🐦 Twitter
+                  </button>
+                  <button onClick={()=>sharePost('facebook')} style={{padding:'8px 16px', background:'#4267b2', color:'white', border:'none', borderRadius:6, cursor:'pointer', fontSize:14, fontWeight:500}}>
+                    📘 Facebook
+                  </button>
+                  <button onClick={()=>sharePost('linkedin')} style={{padding:'8px 16px', background:'#0077b5', color:'white', border:'none', borderRadius:6, cursor:'pointer', fontSize:14, fontWeight:500}}>
+                    💼 LinkedIn
+                  </button>
+                </div>
+              </div>
+              
+              {/* Tags */}
+              {post.tags && post.tags.length > 0 && (
+                <div style={{marginBottom:20}}>
+                  <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                    {post.tags.map((tag, idx) => (
+                      <span key={idx} style={{padding:'4px 12px', background:'#e3f2fd', color:'#1976d2', borderRadius:20, fontSize:12, fontWeight:500}}>
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -762,6 +1075,22 @@ function SinglePost() {
           <textarea rows={3} value={commentText} onChange={(e)=>setCommentText(e.target.value)} style={{width:'100%', border:'1px solid #e5e7eb', padding:8, borderRadius:6, marginBottom:8}} placeholder="Write a comment..."></textarea>
           <button onClick={addComment} style={{background:'#22c55e', color:'#fff', padding:'8px 16px', borderRadius:6, border:'none', cursor:'pointer'}}>Post Comment</button>
         </div>
+        
+        {/* Recommendations Section */}
+        {recommendations.length > 0 && (
+          <div style={{background:'#fff', padding:24, borderRadius:12, boxShadow:'0 2px 8px rgba(0,0,0,0.1)', marginTop:24}}>
+            <h3 style={{fontSize:20, fontWeight:700, marginBottom:16}}>💡 You might also like</h3>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:16}}>
+              {recommendations.map((rec) => (
+                <div key={rec._id} style={{padding:16, border:'1px solid #e5e7eb', borderRadius:8, cursor:'pointer'}} onClick={() => window.location.hash = `#/single-post?id=${rec._id}`}>
+                  <h4 style={{fontSize:16, fontWeight:600, marginBottom:8, color:'#1f2937'}}>{rec.title}</h4>
+                  <p style={{fontSize:14, color:'#6b7280', marginBottom:8}}>by {rec.author?.username || 'Unknown'}</p>
+                  <p style={{fontSize:12, color:'#9ca3af'}}>{new Date(rec.createdAt).toLocaleDateString()}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1079,6 +1408,116 @@ function Login() {
   );
 }
 
+function ForgotPassword() {
+  const [emailOrUsername, setEmailOrUsername] = useState("");
+  const [message, setMessage] = useState("");
+  const [link, setLink] = useState("");
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setMessage(""); setLink("");
+    if (!emailOrUsername) { setMessage("Enter email or username"); return; }
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailOrUsername })
+      });
+      const data = await res.json();
+      setMessage(data.message || "If the account exists, a reset link has been sent.");
+      if (data.resetLink) {
+        // For demo/dev: show the reset link and add a button to navigate
+        setLink(data.resetLink);
+      }
+    } catch (e) {
+      setMessage("Server error. Try again later.");
+    }
+  }
+
+  return (
+    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'linear-gradient(135deg,#a1c4fd,#c2e9fb)'}}>
+      <div style={{background:'#fff', borderRadius:20, padding:32, width:'100%', maxWidth:480, boxShadow:'0 20px 40px rgba(0,0,0,0.15)'}}>
+        <h2 style={{marginTop:0, marginBottom:8}}>Forgot Password</h2>
+        <p style={{marginTop:0, color:'#6b7280'}}>Enter your email or username to receive a reset link.</p>
+        {message && (
+          <div style={{margin:'12px 0', padding:'12px 16px', borderRadius:12, background:'rgba(59,130,246,0.1)', color:'#1d4ed8'}}>{message}</div>
+        )}
+        <form onSubmit={onSubmit}>
+          <div style={{marginBottom:16}}>
+            <input value={emailOrUsername} onChange={(e)=>setEmailOrUsername(e.target.value)} placeholder="Email or Username" style={{width:'100%', padding:'14px 18px', border:'2px solid #e5e7eb', borderRadius:12}} />
+          </div>
+          <button type="submit" style={{width:'100%', padding:14, border:'none', borderRadius:12, background:'linear-gradient(135deg,#667eea,#764ba2)', color:'#fff', fontWeight:600, cursor:'pointer'}}>Send Reset Link</button>
+        </form>
+        {link && (
+          <div style={{marginTop:16}}>
+            <div style={{fontSize:12, color:'#6b7280', marginBottom:6}}>Dev reset link:</div>
+            <div style={{wordBreak:'break-all', background:'#f9fafb', border:'1px solid #e5e7eb', padding:10, borderRadius:8}}>{link}</div>
+            <button onClick={()=>{ const token = (link.split('/').pop() || '').trim(); window.location.hash = `#/reset?token=${token}`; }} style={{marginTop:10, padding:'10px 16px', border:'none', borderRadius:10, background:'#10b981', color:'#fff', cursor:'pointer'}}>Open Reset Page</button>
+          </div>
+        )}
+        <div style={{textAlign:'center', marginTop:16}}>
+          <a href="#/login" style={{color:'#667eea', textDecoration:'none', fontWeight:600}}>Back to Login</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResetPassword() {
+  const params = useMemo(() => new URLSearchParams((window.location.hash.split('?')[1]) || ''), []);
+  const token = params.get('token') || '';
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [message, setMessage] = useState('');
+
+  async function onSubmit(e) {
+    e.preventDefault();
+    setMessage('');
+    if (!newPassword || newPassword.length < 6) { setMessage('Password must be at least 6 characters'); return; }
+    if (newPassword !== confirmPassword) { setMessage('Passwords do not match'); return; }
+    try {
+      const res = await fetch(`http://localhost:5000/api/auth/reset-password/${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword, confirmPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage('Password reset successfully. You can now login.');
+        setTimeout(()=>{ window.location.hash = '#/login'; }, 800);
+      } else {
+        setMessage(data.message || 'Reset failed. Link may be expired.');
+      }
+    } catch (e) {
+      setMessage('Server error. Try again later.');
+    }
+  }
+
+  return (
+    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'linear-gradient(135deg,#f6d365,#fda085)'}}>
+      <div style={{background:'#fff', borderRadius:20, padding:32, width:'100%', maxWidth:480, boxShadow:'0 20px 40px rgba(0,0,0,0.15)'}}>
+        <h2 style={{marginTop:0, marginBottom:8}}>Reset Password</h2>
+        <p style={{marginTop:0, color:'#6b7280'}}>Enter your new password below.</p>
+        {message && (
+          <div style={{margin:'12px 0', padding:'12px 16px', borderRadius:12, background:'rgba(16,185,129,0.1)', color:'#065f46'}}>{message}</div>
+        )}
+        <form onSubmit={onSubmit}>
+          <div style={{marginBottom:12}}>
+            <input type="password" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} placeholder="New Password" style={{width:'100%', padding:'14px 18px', border:'2px solid #e5e7eb', borderRadius:12}} />
+          </div>
+          <div style={{marginBottom:16}}>
+            <input type="password" value={confirmPassword} onChange={(e)=>setConfirmPassword(e.target.value)} placeholder="Confirm Password" style={{width:'100%', padding:'14px 18px', border:'2px solid #e5e7eb', borderRadius:12}} />
+          </div>
+          <button type="submit" style={{width:'100%', padding:14, border:'none', borderRadius:12, background:'linear-gradient(135deg,#ff7eb3,#ff758c)', color:'#fff', fontWeight:600, cursor:'pointer'}}>Update Password</button>
+        </form>
+        <div style={{textAlign:'center', marginTop:16}}>
+          <a href="#/login" style={{color:'#667eea', textDecoration:'none', fontWeight:600}}>Back to Login</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Router() {
   const [route, setRoute] = useState(() => window.location.hash || '#/profile');
   useEffect(() => {
@@ -1089,6 +1528,8 @@ function Router() {
 
   if (route.startsWith('#/login')) return <Login />;
   if (route.startsWith('#/signup')) return <Signup />;
+  if (route.startsWith('#/forgot')) return <ForgotPassword />;
+  if (route.startsWith('#/reset')) return <ResetPassword />;
   if (route.startsWith('#/profile')) return <Profile />;
   if (route.startsWith('#/dashboard')) return <Dashboard />;
   if (route.startsWith('#/create-post')) return <CreatePost />;

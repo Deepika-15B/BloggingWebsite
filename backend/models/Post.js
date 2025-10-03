@@ -5,6 +5,11 @@ const postSchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
+  slug: {
+    type: String,
+    unique: true,
+    index: true
+  },
   content: {
     type: String,
     required: true
@@ -14,6 +19,10 @@ const postSchema = new mongoose.Schema({
     required: true,
     enum: ['technology', 'lifestyle', 'travel', 'food', 'health', 'business', 'entertainment', 'education']
   },
+  tags: [{
+    type: String,
+    trim: true
+  }],
   image: {
     type: String,  // Store image as Base64 string or URL
     default: null
@@ -29,6 +38,13 @@ const postSchema = new mongoose.Schema({
   comments: [
     { type: mongoose.Schema.Types.ObjectId, ref: "Comment" } // link to comment model
   ],
+  // New fields for recommendations and analytics
+  viewCount: { type: Number, default: 0 },
+  shareCount: { type: Number, default: 0 },
+  bookmarksCount: { type: Number, default: 0 },
+  readingTime: { type: Number, default: 0 }, // estimated minutes
+  isPublished: { type: Boolean, default: true },
+  publishedAt: { type: Date, default: Date.now },
   createdAt: { 
     type: Date, 
     default: Date.now 
@@ -47,6 +63,24 @@ postSchema.pre('save', function(next) {
     author: this.author,
     contentLength: this.content ? this.content.length : 0
   });
+  // generate slug if missing
+  if (!this.slug && this.title) {
+    const base = this.title
+      .toString()
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-');
+    const rand = Math.random().toString(36).substring(2, 7);
+    this.slug = `${base}-${rand}`;
+  }
+  // estimate reading time (200 wpm)
+  if (this.content) {
+    const words = this.content.split(/\s+/).filter(Boolean).length;
+    this.readingTime = Math.max(1, Math.round(words / 200));
+  }
+  this.updatedAt = new Date();
   next();
 });
 
