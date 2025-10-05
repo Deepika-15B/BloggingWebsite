@@ -55,7 +55,7 @@ function Profile() {
   useEffect(() => {
     async function loadStats() {
       try {
-        const res = await fetch("http://localhost:5000/api/posts");
+        const res = await fetch("/api/posts");
         const posts = await res.json();
         if (res.ok) {
           const userPosts = posts.filter(
@@ -73,7 +73,7 @@ function Profile() {
     
     async function loadUserProfile() {
       try {
-        const res = await fetch(`http://localhost:5000/api/users/profile/${currentUser.name}`);
+        const res = await fetch(`/api/users/profile/${currentUser.name}`);
         if (res.ok) {
           const data = await res.json();
           setUserProfile(data.user);
@@ -149,7 +149,7 @@ function Profile() {
       setCurrentUser(updated);
       
       // Update server
-      const response = await fetch(`http://localhost:5000/api/users/profile/${edit.username}`, {
+      const response = await fetch(`/api/users/profile/${edit.username}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -162,7 +162,7 @@ function Profile() {
         setIsEditing(false);
         alert("Profile updated successfully!");
         // Reload profile data
-        const profileRes = await fetch(`http://localhost:5000/api/users/profile/${edit.username}`);
+        const profileRes = await fetch(`/api/users/profile/${edit.username}`);
         if (profileRes.ok) {
           const data = await profileRes.json();
           setUserProfile(data.user);
@@ -415,7 +415,7 @@ function Signup() {
     if (data.password !== data.confirmPassword) { showAlert('Passwords do not match.'); return; }
     if (data.password.length < 6) { showAlert('Password must be at least 6 characters.'); return; }
     try {
-      const res = await fetch('http://localhost:5000/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      const res = await fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       const result = await res.json();
       if (res.ok) {
         window.localStorage.setItem('currentUser', JSON.stringify({ name: data.username, fullName: data.fullName, email: data.email }));
@@ -550,7 +550,7 @@ function Dashboard() {
   async function fetchPosts() {
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:5000/api/posts');
+      const res = await fetch('/api/posts');
       const data = await res.json();
       if (!res.ok) throw new Error('Failed to fetch posts');
       setPosts(data);
@@ -565,7 +565,7 @@ function Dashboard() {
     try {
       if (!currentUser || !currentUser.name) return;
       setLoading(true);
-      const res = await fetch(`http://localhost:5000/api/users/feed/${currentUser.name}`);
+      const res = await fetch(`/api/users/feed/${currentUser.name}`);
       const data = await res.json();
       if (!res.ok) throw new Error('Failed to fetch following feed');
       setPosts(data);
@@ -592,7 +592,7 @@ function Dashboard() {
     try {
       const currentUser = JSON.parse(localStorage.getItem('currentUser'));
       if (!currentUser) { alert('Please login to like posts'); return; }
-      const response = await fetch(`http://localhost:5000/api/posts/${postId}/like`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authorUsername: currentUser.name }) });
+      const response = await fetch(`/api/posts/${postId}/like`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authorUsername: currentUser.name }) });
       if (response.ok) fetchPosts(); else alert('Error liking post');
     } catch (e) { console.error('Error liking post:', e); alert('Error liking post'); }
   }
@@ -607,7 +607,7 @@ function Dashboard() {
       if (currentUser.name === authorUsername) { alert('You cannot follow yourself'); return; }
       
       console.log('Making follow request...');
-      const response = await fetch(`http://localhost:5000/api/users/follow/${authorId}`, {
+      const response = await fetch(`/api/users/follow/${authorId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ followerUsername: currentUser.name })
@@ -634,7 +634,7 @@ function Dashboard() {
   async function deletePost(postId) {
     if (!confirm('Are you sure you want to delete this post?')) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/posts/${postId}`, { method: 'DELETE' });
+      const response = await fetch(`/api/posts/${postId}`, { method: 'DELETE' });
       if (response.ok) fetchPosts(); else alert('Error deleting post');
     } catch (e) { console.error('Error deleting post:', e); alert('Error deleting post'); }
   }
@@ -819,7 +819,7 @@ function CreatePost() {
         image: imageData, 
         authorUsername: currentUser.name 
       };
-      const response = await fetch('http://localhost:5000/api/posts', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(postData) });
+      const response = await fetch('/api/posts', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(postData) });
       const result = await response.json();
       if (response.ok) {
         alert('Post created successfully!');
@@ -927,13 +927,13 @@ function SinglePost() {
 
   async function fetchPost() {
     try {
-      const response = await fetch(`http://localhost:5000/api/posts/${postId}`);
+      const response = await fetch(`/api/posts/${postId}`);
       if (!response.ok) throw new Error('Post not found');
       const data = await response.json();
       setPost(data);
       
       // Increment view count
-      fetch(`http://localhost:5000/api/posts/${postId}/view`, { method: 'POST' });
+      fetch(`/api/posts/${postId}/view`, { method: 'POST' });
       
       // Fetch recommendations
       fetchRecommendations();
@@ -944,7 +944,7 @@ function SinglePost() {
 
   async function fetchRecommendations() {
     try {
-      const response = await fetch(`http://localhost:5000/api/posts/${postId}/recommendations`);
+      const response = await fetch(`/api/posts/${postId}/recommendations`);
       if (response.ok) {
         const data = await response.json();
         setRecommendations(data);
@@ -975,7 +975,7 @@ function SinglePost() {
     if (shareUrl) {
       window.open(shareUrl, '_blank', 'width=600,height=400');
       // Increment share count
-      fetch(`http://localhost:5000/api/posts/${postId}/share`, { method: 'POST' });
+      fetch(`/api/posts/${postId}/share`, { method: 'POST' });
     }
   }
 
@@ -983,7 +983,7 @@ function SinglePost() {
     try {
       const currentUser = JSON.parse(localStorage.getItem('currentUser'));
       if (!currentUser || !currentUser.name) { alert('Please login to like posts'); return; }
-      const response = await fetch(`http://localhost:5000/api/posts/${postId}/like`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ authorUsername: currentUser.name }) });
+      const response = await fetch(`/api/posts/${postId}/like`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ authorUsername: currentUser.name }) });
       if (response.ok) { const updated = await response.json(); setPost(updated); } else { const err = await response.json(); alert('Error liking post: ' + (err.error || 'Unknown error')); }
     } catch (e) { console.error('Error liking post:', e); alert('Error liking post. Please try again.'); }
   }
@@ -993,7 +993,7 @@ function SinglePost() {
     const currentUser = JSON.parse(localStorage.getItem('currentUser'));
     if (!currentUser || !currentUser.name) { alert('Please login to comment'); return; }
     try {
-      const response = await fetch(`http://localhost:5000/api/posts/${postId}/comment`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ content: text, authorUsername: currentUser.name }) });
+      const response = await fetch(`/api/posts/${postId}/comment`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ content: text, authorUsername: currentUser.name }) });
       if (response.ok) { const updated = await response.json(); setPost(updated); setCommentText(''); }
       else { const err = await response.json(); alert('Error adding comment: ' + (err.error || 'Unknown error')); }
     } catch (e) { console.error('Error adding comment:', e); alert('Error adding comment. Please try again.'); }
@@ -1195,7 +1195,7 @@ function AdminLogin() {
   const [password, setPassword] = useState('');
   const onSubmit = async (e) => {
     e.preventDefault();
-    const response = await fetch('http://localhost:5000/api/admin/login', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email, password }) });
+      const response = await fetch('/api/admin/login', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email, password }) });
     const result = await response.json();
     alert(result.message);
     if (response.ok && result.token) {
@@ -1250,26 +1250,26 @@ function AdminDashboard() {
 
   async function loadSummary() {
     const token = localStorage.getItem('adminToken');
-    const res = await fetch('http://localhost:5000/api/admin/manage/summary', { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch('/api/admin/manage/summary', { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) { const data = await res.json(); setSummary(data); }
   }
 
   async function loadUsers() {
     const token = localStorage.getItem('adminToken');
-    const res = await fetch('http://localhost:5000/api/admin/manage/users', { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch('/api/admin/manage/users', { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) { const data = await res.json(); setUsers(data); }
   }
 
   async function loadPosts() {
     const token = localStorage.getItem('adminToken');
-    const res = await fetch('http://localhost:5000/api/admin/manage/posts', { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch('/api/admin/manage/posts', { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) { const data = await res.json(); setPosts(data); }
   }
 
   async function deleteUser(id) {
     if (!confirm('Delete user?')) return;
     const token = localStorage.getItem('adminToken');
-    await fetch(`http://localhost:5000/api/admin/manage/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    await fetch(`/api/admin/manage/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     loadUsers();
     loadSummary();
   }
@@ -1277,14 +1277,14 @@ function AdminDashboard() {
   async function deletePost(id) {
     if (!confirm('Delete post?')) return;
     const token = localStorage.getItem('adminToken');
-    await fetch(`http://localhost:5000/api/admin/manage/posts/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    await fetch(`/api/admin/manage/posts/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
     loadPosts();
     loadSummary();
   }
 
   async function togglePublish(id, isPublished) {
     const token = localStorage.getItem('adminToken');
-    await fetch(`http://localhost:5000/api/admin/manage/posts/${id}/publish`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ isPublished }) });
+    await fetch(`/api/admin/manage/posts/${id}/publish`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ isPublished }) });
     loadPosts();
   }
 
@@ -1415,7 +1415,7 @@ function Login() {
       return;
     }
     try {
-      const response = await fetch("http://localhost:5000/api/auth/login", {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emailOrUsername, password })
@@ -1480,7 +1480,7 @@ function ForgotPassword() {
     setMessage(""); setLink("");
     if (!emailOrUsername) { setMessage("Enter email or username"); return; }
     try {
-      const res = await fetch("http://localhost:5000/api/auth/forgot-password", {
+      const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emailOrUsername })
@@ -1538,7 +1538,7 @@ function ResetPassword() {
     if (!newPassword || newPassword.length < 6) { setMessage('Password must be at least 6 characters'); return; }
     if (newPassword !== confirmPassword) { setMessage('Passwords do not match'); return; }
     try {
-      const res = await fetch(`http://localhost:5000/api/auth/reset-password/${token}`, {
+      const res = await fetch(`/api/auth/reset-password/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ newPassword, confirmPassword })
