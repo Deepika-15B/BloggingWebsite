@@ -27,6 +27,7 @@ function Navbar() {
         <li><a href="#/dashboard" style={styles.navLink}>Home</a></li>
         <li><a href="#/create-post" style={styles.navLink}>Create</a></li>
         <li><a href="#/categories" style={styles.navLink}>Categories</a></li>
+        <li><a href="#/admin-login" style={styles.navLink}>Admin</a></li>
         <li><a href="#/login" style={styles.navLink}>Logout</a></li>
       </ul>
       <div className="profile-btn">
@@ -1197,20 +1198,34 @@ function AdminLogin() {
     const response = await fetch('http://localhost:5000/api/admin/login', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email, password }) });
     const result = await response.json();
     alert(result.message);
-    if (response.ok) { window.location.hash = '#/admin'; }
+    if (response.ok && result.token) {
+      localStorage.setItem('adminToken', result.token);
+      localStorage.setItem('isAdminLoggedIn', 'true');
+      window.location.hash = '#/admin';
+    }
   };
   return (
-    <div style={{minHeight:'100vh', background:'#f0f2f5', display:'flex', alignItems:'center', justifyContent:'center'}}>
-      <div className="login-box" style={{maxWidth:400, width:'100%', margin:'80px auto', padding:40, background:'#fff', borderRadius:12, boxShadow:'0 0 10px rgba(0,0,0,0.15)'}}>
-        <h3 style={{textAlign:'center', marginBottom:16}}>Admin Login</h3>
-        <form onSubmit={onSubmit}>
-          <div style={{marginBottom:12}}>
-            <input type="email" value={email} onChange={(e)=>setEmail(e.target.value)} className="form-control" placeholder="Admin Email" required style={createStyles.input} />
+    <div style={{minHeight:'100vh', padding:20, background: 'linear-gradient(135deg,#667eea 0%,#764ba2 25%,#f093fb 50%,#f5576c 75%,#4facfe 100%)', backgroundSize:'400% 400%', animation:'gradientShift 15s ease infinite', display:'flex', alignItems:'center', justifyContent:'center'}}>
+      <style>{`@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}`}</style>
+      <div style={{maxWidth:480, width:'100%', background:'rgba(255,255,255,0.95)', backdropFilter:'blur(30px)', borderRadius:24, boxShadow:'0 25px 50px -12px rgba(0,0,0,0.4)', padding:48, border:'1px solid rgba(255,255,255,0.3)'}}>
+        <div style={{textAlign:'center', marginBottom:32}}>
+          <div style={{width:80, height:80, background:'linear-gradient(135deg,#667eea,#764ba2)', borderRadius:20, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', color:'#fff', fontSize:32, boxShadow:'0 8px 25px rgba(102,126,234,0.3)'}}>🛡️</div>
+          <h1 style={{color:'#1a202c', fontSize:32, fontWeight:700, marginBottom:12, background:'linear-gradient(135deg,#667eea,#764ba2)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>Admin Login</h1>
+          <p style={{color:'#718096'}}>Manage users and posts securely</p>
+        </div>
+        <form onSubmit={onSubmit} noValidate>
+          <div style={{marginBottom:20}}>
+            <label style={{display:'block', marginBottom:10, color:'#2d3748', fontWeight:600, fontSize:15}}>Email</label>
+            <input type="email" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="admin@blog.com" style={signupStyles.input} required />
           </div>
-          <div style={{marginBottom:12}}>
-            <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} className="form-control" placeholder="Password" required style={createStyles.input} />
+          <div style={{marginBottom:8}}>
+            <label style={{display:'block', marginBottom:10, color:'#2d3748', fontWeight:600, fontSize:15}}>Password</label>
+            <input type="password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Enter password" style={signupStyles.input} required />
           </div>
-          <button type="submit" className="btn btn-primary w-100" style={{width:'100%', padding:12, borderRadius:8, border:'none', background:'#0d6efd', color:'#fff', cursor:'pointer'}}>Login</button>
+          <button type="submit" style={signupStyles.submit}>Sign In</button>
+          <div style={{textAlign:'center', marginTop:18}}>
+            <a href="#/dashboard" style={{color:'#667eea', textDecoration:'none', fontWeight:600}}>Back to app</a>
+          </div>
         </form>
       </div>
     </div>
@@ -1220,117 +1235,164 @@ function AdminLogin() {
 function AdminDashboard() {
   const [userFilter, setUserFilter] = useState('');
   const [postFilter, setPostFilter] = useState('');
-  const users = [
-    { _id: '1', username: 'alice', email: 'alice@mail.com', role: 'user', createdAt: '2025-06-01' },
-    { _id: '2', username: 'bob', email: 'bob@mail.com', role: 'user', createdAt: '2025-05-10' },
-    { _id: '3', username: 'charlie', email: 'admin@blog.com', role: 'admin', createdAt: '2024-11-15' },
-  ];
-  const posts = [
-    { _id: 'p1', title: 'Hello World', author: 'alice', status: 'published', createdAt: '2025-07-01' },
-    { _id: 'p2', title: 'Draft Idea', author: 'bob', status: 'draft', createdAt: '2025-07-10' },
-  ];
-  const filteredUsers = users.filter(u => u.username.toLowerCase().includes(userFilter.toLowerCase()) || u.email.toLowerCase().includes(userFilter.toLowerCase()));
-  const filteredPosts = posts.filter(p => p.title.toLowerCase().includes(postFilter.toLowerCase()) || p.author.toLowerCase().includes(postFilter.toLowerCase()));
+  const [users, setUsers] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [summary, setSummary] = useState({ usersCount: 0, postsCount: 0, flagged: 0 });
+  const [section, setSection] = useState('users');
 
-  function deleteUser(id) { if (!confirm('Delete user?')) return; alert('User deleted (mock)'); }
-  function deletePost(id) { if (!confirm('Delete post?')) return; alert('Post deleted (mock)'); }
-  function logout() { localStorage.removeItem('isAdminLoggedIn'); window.location.hash = '#/admin-login'; }
+  useEffect(() => {
+    const token = localStorage.getItem('adminToken');
+    if (!token) { window.location.hash = '#/admin-login'; return; }
+    loadSummary();
+    loadUsers();
+    loadPosts();
+  }, []);
+
+  async function loadSummary() {
+    const token = localStorage.getItem('adminToken');
+    const res = await fetch('http://localhost:5000/api/admin/manage/summary', { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) { const data = await res.json(); setSummary(data); }
+  }
+
+  async function loadUsers() {
+    const token = localStorage.getItem('adminToken');
+    const res = await fetch('http://localhost:5000/api/admin/manage/users', { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) { const data = await res.json(); setUsers(data); }
+  }
+
+  async function loadPosts() {
+    const token = localStorage.getItem('adminToken');
+    const res = await fetch('http://localhost:5000/api/admin/manage/posts', { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) { const data = await res.json(); setPosts(data); }
+  }
+
+  async function deleteUser(id) {
+    if (!confirm('Delete user?')) return;
+    const token = localStorage.getItem('adminToken');
+    await fetch(`http://localhost:5000/api/admin/manage/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    loadUsers();
+    loadSummary();
+  }
+
+  async function deletePost(id) {
+    if (!confirm('Delete post?')) return;
+    const token = localStorage.getItem('adminToken');
+    await fetch(`http://localhost:5000/api/admin/manage/posts/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    loadPosts();
+    loadSummary();
+  }
+
+  async function togglePublish(id, isPublished) {
+    const token = localStorage.getItem('adminToken');
+    await fetch(`http://localhost:5000/api/admin/manage/posts/${id}/publish`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ isPublished }) });
+    loadPosts();
+  }
+
+  function logout() { localStorage.removeItem('isAdminLoggedIn'); localStorage.removeItem('adminToken'); window.location.hash = '#/admin-login'; }
+
+  const filteredUsers = users.filter(u => (u.username||'').toLowerCase().includes(userFilter.toLowerCase()) || (u.email||'').toLowerCase().includes(userFilter.toLowerCase()));
+  const filteredPosts = posts.filter(p => (p.title||'').toLowerCase().includes(postFilter.toLowerCase()) || ((p.author?.username)||'').toLowerCase().includes(postFilter.toLowerCase()));
 
   return (
-    <div style={{background:'#eef3f9', minHeight:'100vh', fontFamily:'system-ui,-apple-system,BlinkMacSystemFont,sans-serif'}}>
+    <div style={{minHeight:'100vh', fontFamily:'system-ui,-apple-system,BlinkMacSystemFont,sans-serif', background: 'linear-gradient(135deg,#667eea 0%,#764ba2 25%,#f093fb 50%,#f5576c 75%,#4facfe 100%)', backgroundSize:'400% 400%', animation:'gradientShift 15s ease infinite'}}>
       <div className="d-flex" style={{display:'flex'}}>
-        <div className="sidebar" style={{width:220, minHeight:'100vh', background:'#1f2a44', color:'#f0f3f9', position:'fixed', padding:'1rem 0'}}>
+        <div className="sidebar" style={{width:220, minHeight:'100vh', background:'rgba(31,42,68,0.9)', color:'#f0f3f9', position:'fixed', padding:'1rem 0', backdropFilter:'blur(12px)'}}>
           <div style={{textAlign:'center', marginBottom:16}}>
             <h4 style={{margin:0}}>Admin Panel</h4>
             <small>BlogVerse</small>
           </div>
-          <a href="#" className="active" style={{color:'#cfd8e7', textDecoration:'none', display:'block', padding:'.75rem 1.25rem', margin:'4px 0', borderRadius:6, background:'#2f3f6f'}}>Overview</a>
-          <a href="#" onClick={(e)=>{e.preventDefault(); document.getElementById('usersSection').style.display='block'; document.getElementById('postsSection').style.display='none';}} style={{color:'#cfd8e7', textDecoration:'none', display:'block', padding:'.75rem 1.25rem', margin:'4px 0', borderRadius:6}}>Users</a>
-          <a href="#" onClick={(e)=>{e.preventDefault(); document.getElementById('usersSection').style.display='none'; document.getElementById('postsSection').style.display='block';}} style={{color:'#cfd8e7', textDecoration:'none', display:'block', padding:'.75rem 1.25rem', margin:'4px 0', borderRadius:6}}>Posts</a>
+          <a href="#" className="active" style={{color:'#cfd8e7', textDecoration:'none', display:'block', padding:'.75rem 1.25rem', margin:'4px 0', borderRadius:12, background:'linear-gradient(135deg,#667eea,#764ba2)'}}>Overview</a>
+          <a href="#" onClick={(e)=>{e.preventDefault(); setSection('users'); }} style={{color:'#cfd8e7', textDecoration:'none', display:'block', padding:'.75rem 1.25rem', margin:'4px 0', borderRadius:6}}>Users</a>
+          <a href="#" onClick={(e)=>{e.preventDefault(); setSection('posts'); }} style={{color:'#cfd8e7', textDecoration:'none', display:'block', padding:'.75rem 1.25rem', margin:'4px 0', borderRadius:6}}>Posts</a>
           <a href="#" onClick={(e)=>{e.preventDefault(); logout();}} style={{color:'#cfd8e7', textDecoration:'none', display:'block', padding:'.75rem 1.25rem', margin:'4px 0', borderRadius:6}}>Logout</a>
         </div>
         <div className="main" style={{marginLeft:240, padding:30, flexGrow:1}}>
           <div className="d-flex justify-content-between align-items-center mb-4" style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
             <div>
-              <h2>Welcome, Admin</h2>
-              <p style={{color:'#6c757d'}}>Overview of platform activity</p>
+              <h2 style={{color:'#fff', textShadow:'0 2px 6px rgba(0,0,0,0.2)'}}>Welcome, Admin</h2>
+              <p style={{color:'rgba(255,255,255,0.8)'}}>Overview of platform activity</p>
             </div>
           </div>
           <div className="row g-3" style={{display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:12}}>
-            <div className="card card-summary p-3" style={{borderRadius:12, padding:12, background:'#fff'}}>
+            <div className="card card-summary p-3" style={{borderRadius:16, padding:16, background:'rgba(255,255,255,0.95)', backdropFilter:'blur(20px)', boxShadow:'0 10px 30px rgba(0,0,0,0.15)'}}>
               <div style={{display:'flex', justifyContent:'space-between'}}>
-                <div><h6 style={{textTransform:'uppercase'}}>Total Users</h6><h3 id="adminTotalUsers">12</h3></div>
+                <div><h6 style={{textTransform:'uppercase'}}>Total Users</h6><h3 id="adminTotalUsers">{summary.usersCount}</h3></div>
                 <div style={{fontSize:'2rem'}}>👥</div>
               </div>
               <small style={{color:'#6c757d'}}>Registered on platform</small>
             </div>
-            <div className="card card-summary p-3" style={{borderRadius:12, padding:12, background:'#fff'}}>
+            <div className="card card-summary p-3" style={{borderRadius:16, padding:16, background:'rgba(255,255,255,0.95)', backdropFilter:'blur(20px)', boxShadow:'0 10px 30px rgba(0,0,0,0.15)'}}>
               <div style={{display:'flex', justifyContent:'space-between'}}>
-                <div><h6 style={{textTransform:'uppercase'}}>Total Posts</h6><h3 id="adminTotalPosts">34</h3></div>
+                <div><h6 style={{textTransform:'uppercase'}}>Total Posts</h6><h3 id="adminTotalPosts">{summary.postsCount}</h3></div>
                 <div style={{fontSize:'2rem'}}>✍️</div>
               </div>
               <small style={{color:'#6c757d'}}>All posts by users</small>
             </div>
-            <div className="card card-summary p-3" style={{borderRadius:12, padding:12, background:'#fff'}}>
+            <div className="card card-summary p-3" style={{borderRadius:16, padding:16, background:'rgba(255,255,255,0.95)', backdropFilter:'blur(20px)', boxShadow:'0 10px 30px rgba(0,0,0,0.15)'}}>
               <div style={{display:'flex', justifyContent:'space-between'}}>
-                <div><h6 style={{textTransform:'uppercase'}}>Flagged / Pending</h6><h3 id="adminFlagged">2</h3></div>
+                <div><h6 style={{textTransform:'uppercase'}}>Flagged / Pending</h6><h3 id="adminFlagged">{summary.flagged}</h3></div>
                 <div style={{fontSize:'2rem'}}>⚠️</div>
               </div>
               <small style={{color:'#6c757d'}}>Needs review</small>
             </div>
           </div>
-          <div id="usersSection" className="table-wrapper mt-5" style={{marginTop:20}}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
-              <h4>Users</h4>
-              <input value={userFilter} onChange={(e)=>setUserFilter(e.target.value)} placeholder="Search users..." className="form-control form-control-sm w-25" style={{width:240, padding:8, border:'1px solid #ced4da', borderRadius:6}} />
+
+          {section === 'users' && (
+            <div id="usersSection" className="table-wrapper mt-5" style={{marginTop:20}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                <h4>Users</h4>
+                <input value={userFilter} onChange={(e)=>setUserFilter(e.target.value)} placeholder="Search users..." className="form-control form-control-sm w-25" style={{width:240, padding:8, border:'1px solid #ced4da', borderRadius:6}} />
+              </div>
+              <div className="table-responsive" style={{overflowX:'auto'}}>
+                <table className="table table-hover align-middle" style={{width:'100%', background:'rgba(255,255,255,0.98)', borderRadius:12, overflow:'hidden'}}>
+                  <thead className="table-light" style={{background:'#f8f9fa'}}>
+                    <tr><th>#</th><th>Username / Email</th><th>Joined</th><th>Actions</th></tr>
+                  </thead>
+                  <tbody id="usersTableBody">
+                    {filteredUsers.map((u,i)=> (
+                      <tr key={u._id}>
+                        <td>{i+1}</td>
+                        <td>{u.username} <br/><small>{u.email}</small></td>
+                        <td>{new Date(u.createdAt).toLocaleDateString()}</td>
+                        <td><button className="btn btn-sm btn-danger" onClick={()=>deleteUser(u._id)} style={{padding:'8px 12px', border:'none', borderRadius:10, background:'linear-gradient(135deg,#ff416c,#ff4b2b)', color:'#fff', cursor:'pointer'}}>Delete</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div className="table-responsive" style={{overflowX:'auto'}}>
-              <table className="table table-hover align-middle" style={{width:'100%', background:'#fff'}}>
-                <thead className="table-light" style={{background:'#f8f9fa'}}>
-                  <tr><th>#</th><th>Username / Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr>
-                </thead>
-                <tbody id="usersTableBody">
-                  {filteredUsers.map((u,i)=> (
-                    <tr key={u._id}>
-                      <td>{i+1}</td>
-                      <td>{u.username} <br/><small>{u.email}</small></td>
-                      <td><span className="badge bg-info">{u.role}</span></td>
-                      <td>{u.createdAt}</td>
-                      <td><button className="btn btn-sm btn-danger" onClick={()=>deleteUser(u._id)} style={{padding:'6px 10px', border:'none', borderRadius:6, background:'#dc3545', color:'#fff', cursor:'pointer'}}>Delete</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          )}
+
+          {section === 'posts' && (
+            <div id="postsSection" className="table-wrapper mt-5" style={{marginTop:20}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                <h4>Posts</h4>
+                <input value={postFilter} onChange={(e)=>setPostFilter(e.target.value)} placeholder="Search posts..." className="form-control form-control-sm w-25" style={{width:240, padding:8, border:'1px solid #ced4da', borderRadius:6}} />
+              </div>
+              <div className="table-responsive" style={{overflowX:'auto'}}>
+                <table className="table table-hover align-middle" style={{width:'100%', background:'rgba(255,255,255,0.98)', borderRadius:12, overflow:'hidden'}}>
+                  <thead className="table-light" style={{background:'#f8f9fa'}}>
+                    <tr><th>#</th><th>Title</th><th>Author</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+                  </thead>
+                  <tbody id="postsTableBody">
+                    {filteredPosts.map((p,i)=> (
+                      <tr key={p._id}>
+                        <td>{i+1}</td>
+                        <td>{p.title}</td>
+                        <td>{p.author?.username || '-'}</td>
+                        <td>{p.isPublished ? 'published' : 'draft'}</td>
+                        <td>{new Date(p.createdAt).toLocaleDateString()}</td>
+                        <td>
+                          <button className="btn btn-sm btn-secondary" onClick={()=>togglePublish(p._id, !p.isPublished)} style={{padding:'8px 12px', border:'none', borderRadius:10, background:'linear-gradient(135deg,#8EC5FC,#E0C3FC)', color:'#1f2937', cursor:'pointer', marginRight:6}}>{p.isPublished ? 'Unpublish' : 'Publish'}</button>
+                          <button className="btn btn-sm btn-danger" onClick={()=>deletePost(p._id)} style={{padding:'8px 12px', border:'none', borderRadius:10, background:'linear-gradient(135deg,#ff416c,#ff4b2b)', color:'#fff', cursor:'pointer'}}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-          <div id="postsSection" className="table-wrapper mt-5" style={{marginTop:20, display:'none'}}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
-              <h4>Posts</h4>
-              <input value={postFilter} onChange={(e)=>setPostFilter(e.target.value)} placeholder="Search posts..." className="form-control form-control-sm w-25" style={{width:240, padding:8, border:'1px solid #ced4da', borderRadius:6}} />
-            </div>
-            <div className="table-responsive" style={{overflowX:'auto'}}>
-              <table className="table table-hover align-middle" style={{width:'100%', background:'#fff'}}>
-                <thead className="table-light" style={{background:'#f8f9fa'}}>
-                  <tr><th>#</th><th>Title</th><th>Author</th><th>Status</th><th>Created</th><th>Actions</th></tr>
-                </thead>
-                <tbody id="postsTableBody">
-                  {posts.filter(p => p.title.toLowerCase().includes(postFilter.toLowerCase()) || p.author.toLowerCase().includes(postFilter.toLowerCase())).map((p,i)=> (
-                    <tr key={p._id}>
-                      <td>{i+1}</td>
-                      <td>{p.title}</td>
-                      <td>{p.author}</td>
-                      <td>{p.status}</td>
-                      <td>{p.createdAt}</td>
-                      <td>
-                        <button className="btn btn-sm btn-warning" style={{padding:'6px 10px', border:'none', borderRadius:6, background:'#ffc107', color:'#000', cursor:'pointer', marginRight:6}}>Edit</button>
-                        <button className="btn btn-sm btn-danger" onClick={()=>deletePost(p._id)} style={{padding:'6px 10px', border:'none', borderRadius:6, background:'#dc3545', color:'#fff', cursor:'pointer'}}>Delete</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

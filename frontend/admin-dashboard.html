@@ -173,34 +173,26 @@
     }
 
     async function loadSummary() {
-      // fetch counts from backend; placeholders below
-      // const usersRes = await fetch("http://localhost:5000/api/admin/manage/users");
-      // const postsRes = await fetch("http://localhost:5000/api/admin/manage/posts");
-
-      // mock
-      const totalUsers = 12;
-      const totalPosts = 34;
-      const flagged = 2;
-
-      document.getElementById('adminTotalUsers').textContent = totalUsers;
-      document.getElementById('adminTotalPosts').textContent = totalPosts;
-      document.getElementById('adminFlagged').textContent = flagged;
+      const token = localStorage.getItem('adminToken');
+      const res = await fetch("http://localhost:5000/api/admin/manage/summary", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      document.getElementById('adminTotalUsers').textContent = data.usersCount || 0;
+      document.getElementById('adminTotalPosts').textContent = data.postsCount || 0;
+      document.getElementById('adminFlagged').textContent = data.flagged || 0;
     }
 
     async function loadUsers() {
-      // fetch from backend, filter with search
-      // const res = await fetch("http://localhost:5000/api/admin/manage/users");
-      // const users = await res.json();
-
-      // mock users
-      const users = [
-        { _id: "1", username: "alice", email: "alice@mail.com", role: "user", createdAt: "2025-06-01" },
-        { _id: "2", username: "bob", email: "bob@mail.com", role: "user", createdAt: "2025-05-10" },
-        { _id: "3", username: "charlie", email: "admin@blog.com", role: "admin", createdAt: "2024-11-15" },
-      ];
-
+      const token = localStorage.getItem('adminToken');
+      const res = await fetch("http://localhost:5000/api/admin/manage/users", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) return;
+      const users = await res.json();
       const filter = document.getElementById('userSearch').value.toLowerCase();
-      const filtered = users.filter(u => u.username.toLowerCase().includes(filter) || u.email.toLowerCase().includes(filter));
+      const filtered = users.filter(u => (u.username||'').toLowerCase().includes(filter) || (u.email||'').toLowerCase().includes(filter));
 
       const tbody = document.getElementById('usersTableBody');
       tbody.innerHTML = "";
@@ -220,18 +212,14 @@
     }
 
     async function loadPosts() {
-      // fetch from backend
-      // const res = await fetch("http://localhost:5000/api/admin/manage/posts");
-      // const posts = await res.json();
-
-      // mock posts
-      const posts = [
-        { _id: "p1", title: "Hello World", author: "alice", status: "published", createdAt: "2025-07-01" },
-        { _id: "p2", title: "Draft Idea", author: "bob", status: "draft", createdAt: "2025-07-10" },
-      ];
-
+      const token = localStorage.getItem('adminToken');
+      const res = await fetch("http://localhost:5000/api/admin/manage/posts", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) return;
+      const posts = await res.json();
       const filter = document.getElementById('postSearch').value.toLowerCase();
-      const filtered = posts.filter(p => p.title.toLowerCase().includes(filter) || p.author.toLowerCase().includes(filter));
+      const filtered = posts.filter(p => (p.title||'').toLowerCase().includes(filter) || ((p.author?.username)||'').toLowerCase().includes(filter));
 
       const tbody = document.getElementById('postsTableBody');
       tbody.innerHTML = "";
@@ -240,11 +228,11 @@
         tr.innerHTML = `
           <td>${i+1}</td>
           <td>${p.title}</td>
-          <td>${p.author}</td>
-          <td>${p.status}</td>
-          <td>${p.createdAt}</td>
+          <td>${p.author?.username || '-'}</td>
+          <td>${p.isPublished ? 'published' : 'draft'}</td>
+          <td>${new Date(p.createdAt).toLocaleDateString()}</td>
           <td>
-            <button class="btn btn-sm btn-warning me-1">Edit</button>
+            <button class="btn btn-sm btn-secondary me-1" onclick="togglePublish('${p._id}', ${!p.isPublished})">${p.isPublished ? 'Unpublish' : 'Publish'}</button>
             <button class="btn btn-sm btn-danger" onclick="deletePost('${p._id}')">Delete</button>
           </td>
         `;
@@ -252,17 +240,23 @@
       });
     }
 
-    function deleteUser(id) {
+    async function deleteUser(id) {
       if (!confirm("Delete user?")) return;
-      // call DELETE /api/admin/manage/users/:id then refresh
-      alert("User deleted (mock)");
+      const token = localStorage.getItem('adminToken');
+      await fetch(`http://localhost:5000/api/admin/manage/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
       loadUsers();
     }
 
-    function deletePost(id) {
+    async function deletePost(id) {
       if (!confirm("Delete post?")) return;
-      // call DELETE /api/admin/manage/posts/:id then refresh
-      alert("Post deleted (mock)");
+      const token = localStorage.getItem('adminToken');
+      await fetch(`http://localhost:5000/api/admin/manage/posts/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      loadPosts();
+    }
+
+    async function togglePublish(id, isPublished) {
+      const token = localStorage.getItem('adminToken');
+      await fetch(`http://localhost:5000/api/admin/manage/posts/${id}/publish`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ isPublished }) });
       loadPosts();
     }
 
@@ -272,6 +266,9 @@
     }
 
     // init
+    if (!localStorage.getItem('adminToken')) {
+      window.location.href = 'admin-login.html';
+    }
     showSection('users');
     loadSummary();
     loadUsers();
